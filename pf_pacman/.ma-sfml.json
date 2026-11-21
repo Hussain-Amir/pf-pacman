@@ -1,0 +1,14 @@
+{
+  "tool": "ma-sfml",
+  "linkedAt": "2026-11-21T08:35:01.651Z",
+  "sfmlPath": "C:\\Users\\Hussain Chohan\\.ma-sfml-cache\\SFML-3.0.1-windows-vc17-64-bit\\SFML-3.0.1",
+  "sfmlVersion": "3.0.1",
+  "projectName": "pf_pacman",
+  "ide": "vs",
+  "propsFile": "F:\\GitHub\\pf-pacman\\pf_pacman\\pf_pacman\\ma-sfml.props",
+  "vcxprojPath": "F:\\GitHub\\pf-pacman\\pf_pacman\\pf_pacman\\pf_pacman.vcxproj",
+  "configFiles": [
+    "pf_pacman/ma-sfml.props"
+  ],
+  "stub": null
+}
