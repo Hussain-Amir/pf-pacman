@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="pf_pacman/pf_pacman.vcxproj" />
+  <Project Path="pf_pacman/pf_pacman.vcxproj" Id="6c8ab237-e3f3-4f6a-877a-4a230867b735" />
 </Solution>

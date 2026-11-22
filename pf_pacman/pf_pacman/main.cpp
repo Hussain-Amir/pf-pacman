@@ -11,6 +11,7 @@ const int ROWS = 21;
 const int COLS = 19;
 const float HUD_HEIGHT = 50.f;
 const int NUM_GHOSTS = 4;
+const int PLAYER_SPEED = 8;
 
 char maze[ROWS][COLS];
 int pelletCount = 0;
@@ -19,6 +20,14 @@ int ghostStartRow[NUM_GHOSTS], ghostStartCol[NUM_GHOSTS];
 bool mazeLoaded = false;
 sf::Font font;
 bool fontLoaded = false;
+
+int keyDir = 0;          // 0 none, 1 up, 2 down, 3 left, 4 right
+int playerRow = 0, playerCol = 0;
+int playerDir = 0;
+int playerTimer = 0;
+
+const int dRow[5] = { 0, -1, 1, 0, 0 };
+const int dCol[5] = { 0, 0, 0, -1, 1 };
 
 // reads maze.txt, false if file is missing or wrong
 bool loadMaze(const string& filename)
@@ -66,17 +75,63 @@ bool loadMaze(const string& filename)
     return ghostsFound == NUM_GHOSTS;
 }
 
+// true for wall or outside the maze
+bool isWall(int r, int c)
+{
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS)
+        return true;
+    return maze[r][c] == '#';
+}
+
+// moves one cell every PLAYER_SPEED frames
+void movePlayer()
+{
+    playerTimer++;
+    if (playerTimer < PLAYER_SPEED)
+        return;
+    playerTimer = 0;
+
+    // turn only if that way is open, else key is ignored
+    if (keyDir != 0 && !isWall(playerRow + dRow[keyDir], playerCol + dCol[keyDir]))
+        playerDir = keyDir;
+
+    int newRow = playerRow + dRow[playerDir];
+    int newCol = playerCol + dCol[playerDir];
+
+    if (!isWall(newRow, newCol))
+    {
+        playerRow = newRow;
+        playerCol = newCol;
+    }
+    else
+    {
+        playerDir = 0;
+    }
+}
+
 void handleInput(sf::RenderWindow& window)
 {
     while (const std::optional event = window.pollEvent())
     {
         if (event->is<sf::Event::Closed>())
             window.close();
+        else if (const auto* key = event->getIf<sf::Event::KeyPressed>())
+        {
+            if (key->code == sf::Keyboard::Key::Up || key->code == sf::Keyboard::Key::W)
+                keyDir = 1;
+            else if (key->code == sf::Keyboard::Key::Down || key->code == sf::Keyboard::Key::S)
+                keyDir = 2;
+            else if (key->code == sf::Keyboard::Key::Left || key->code == sf::Keyboard::Key::A)
+                keyDir = 3;
+            else if (key->code == sf::Keyboard::Key::Right || key->code == sf::Keyboard::Key::D)
+                keyDir = 4;
+        }
     }
 }
 
 void updateGame()
 {
+    movePlayer();
 }
 
 void drawMaze(sf::RenderWindow& window)
@@ -116,6 +171,14 @@ void drawMaze(sf::RenderWindow& window)
     }
 }
 
+void drawPlayer(sf::RenderWindow& window)
+{
+    sf::CircleShape pacman(12.f);
+    pacman.setFillColor(sf::Color::Yellow);
+    pacman.setPosition({ playerCol * TILE + 3.f, HUD_HEIGHT + playerRow * TILE + 3.f });
+    window.draw(pacman);
+}
+
 void drawGame(sf::RenderWindow& window)
 {
     window.clear();
@@ -123,6 +186,7 @@ void drawGame(sf::RenderWindow& window)
     if (mazeLoaded)
     {
         drawMaze(window);
+        drawPlayer(window);
     }
     else if (fontLoaded)
     {
@@ -147,6 +211,9 @@ int main()
     mazeLoaded = loadMaze("maze.txt");
     if (!mazeLoaded)
         cout << "Could not load maze.txt" << endl;
+
+    playerRow = playerStartRow;
+    playerCol = playerStartCol;
 
     while (window.isOpen())
     {
