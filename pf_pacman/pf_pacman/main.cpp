@@ -2,6 +2,7 @@
 #include <optional>
 #include <fstream>
 #include <iostream>
+#include <string>
 using namespace std;
 
 const int WIDTH = 570;
@@ -12,6 +13,8 @@ const int COLS = 19;
 const float HUD_HEIGHT = 50.f;
 const int NUM_GHOSTS = 4;
 const int PLAYER_SPEED = 8;
+const int PELLET_POINTS = 10;
+const int POWER_POINTS = 50;
 
 char maze[ROWS][COLS];
 int pelletCount = 0;
@@ -25,6 +28,8 @@ int keyDir = 0;          // 0 none, 1 up, 2 down, 3 left, 4 right
 int playerRow = 0, playerCol = 0;
 int playerDir = 0;
 int playerTimer = 0;
+
+int score = 0;
 
 const int dRow[5] = { 0, -1, 1, 0, 0 };
 const int dCol[5] = { 0, 0, 0, -1, 1 };
@@ -109,6 +114,27 @@ void movePlayer()
     }
 }
 
+// eats the pellet under the player
+void eatPellet()
+{
+    char cell = maze[playerRow][playerCol];
+
+    if (cell == '.')
+    {
+        score += PELLET_POINTS;
+        maze[playerRow][playerCol] = '-';
+        pelletCount--;
+    }
+    else if (cell == 'o')
+    {
+        score += POWER_POINTS;
+        maze[playerRow][playerCol] = '-';
+        pelletCount--;
+    }
+        
+
+}
+
 void handleInput(sf::RenderWindow& window)
 {
     while (const std::optional event = window.pollEvent())
@@ -132,6 +158,7 @@ void handleInput(sf::RenderWindow& window)
 void updateGame()
 {
     movePlayer();
+    eatPellet();
 }
 
 void drawMaze(sf::RenderWindow& window)
@@ -179,6 +206,15 @@ void drawPlayer(sf::RenderWindow& window)
     window.draw(pacman);
 }
 
+void drawHUD(sf::RenderWindow& window)
+{
+    if (!fontLoaded)
+        return;
+    sf::Text scoreText(font, "Score: " + to_string(score), 24);
+    scoreText.setPosition({ 15.f, 10.f });
+    window.draw(scoreText);
+}
+
 void drawGame(sf::RenderWindow& window)
 {
     window.clear();
@@ -187,6 +223,7 @@ void drawGame(sf::RenderWindow& window)
     {
         drawMaze(window);
         drawPlayer(window);
+        drawHUD(window);
     }
     else if (fontLoaded)
     {
