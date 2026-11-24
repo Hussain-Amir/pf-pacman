@@ -1,5 +1,7 @@
 #include <SFML/Graphics.hpp>
 #include <optional>
+#include <cstdlib>
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -13,6 +15,7 @@ const int COLS = 19;
 const float HUD_HEIGHT = 50.f;
 const int NUM_GHOSTS = 4;
 const int PLAYER_SPEED = 8;
+const int GHOST_SPEED = 10;
 const int PELLET_POINTS = 10;
 const int POWER_POINTS = 50;
 
@@ -31,8 +34,22 @@ int playerTimer = 0;
 
 int score = 0;
 
+int ghostRow[NUM_GHOSTS], ghostCol[NUM_GHOSTS];
+int ghostDir[NUM_GHOSTS];
+int ghostTimer[NUM_GHOSTS];
+
 const int dRow[5] = { 0, -1, 1, 0, 0 };
 const int dCol[5] = { 0, 0, 0, -1, 1 };
+
+// tie order: up, left, down, right
+const int TIE_ORDER[4] = { 1, 3, 2, 4 };
+
+const sf::Color GHOST_COLORS[NUM_GHOSTS] = {
+    sf::Color(255, 0, 0),
+    sf::Color(255, 150, 200),
+    sf::Color(0, 255, 255),
+    sf::Color(255, 160, 0)
+};
 
 // reads maze.txt, false if file is missing or wrong
 bool loadMaze(const string& filename)
@@ -88,6 +105,24 @@ bool isWall(int r, int c)
     return maze[r][c] == '#';
 }
 
+// puts player and ghosts on their start cells
+void resetPositions()
+{
+    playerRow = playerStartRow;
+    playerCol = playerStartCol;
+    playerDir = 0;
+    keyDir = 0;
+    playerTimer = 0;
+
+    for (int i = 0; i < NUM_GHOSTS; i++)
+    {
+        ghostRow[i] = ghostStartRow[i];
+        ghostCol[i] = ghostStartCol[i];
+        ghostDir[i] = 0;
+        ghostTimer[i] = 0;
+    }
+}
+
 // moves one cell every PLAYER_SPEED frames
 void movePlayer()
 {
@@ -131,8 +166,57 @@ void eatPellet()
         maze[playerRow][playerCol] = '-';
         pelletCount--;
     }
-        
+}
 
+// up <-> down, left <-> right
+int oppositeDir(int d)
+{
+    if (d == 0)
+        return 0;
+    return (d % 2 == 1) ? d + 1 : d - 1;
+}
+
+// moves ghost i one cell every GHOST_SPEED frames
+void moveGhost(int i)
+{
+    ghostTimer[i]++;
+    if (ghostTimer[i] < GHOST_SPEED)
+        return;
+    ghostTimer[i] = 0;
+
+    // open directions in tie order, never turning back
+    int options[4];
+    int count = 0;
+    int back = oppositeDir(ghostDir[i]);
+
+    for (int k = 0; k < 4; k++)
+    {
+        int d = TIE_ORDER[k];
+        if (d == back)
+            continue;
+        if (!isWall(ghostRow[i] + dRow[d], ghostCol[i] + dCol[d]))
+            options[count++] = d;
+    }
+
+    // turn back only in a dead end
+    if (count == 0 && back != 0 && !isWall(ghostRow[i] + dRow[back], ghostCol[i] + dCol[back]))
+        options[count++] = back;
+
+    if (count == 0)
+        return;
+
+    // draft: every ghost picks a random open direction
+    int chosen = options[rand() % count];
+
+    ghostDir[i] = chosen;
+    ghostRow[i] += dRow[chosen];
+    ghostCol[i] += dCol[chosen];
+}
+
+void moveGhosts()
+{
+    for (int i = 0; i < NUM_GHOSTS; i++)
+        moveGhost(i);
 }
 
 void handleInput(sf::RenderWindow& window)
@@ -159,6 +243,7 @@ void updateGame()
 {
     movePlayer();
     eatPellet();
+    moveGhosts();
 }
 
 void drawMaze(sf::RenderWindow& window)
@@ -206,6 +291,17 @@ void drawPlayer(sf::RenderWindow& window)
     window.draw(pacman);
 }
 
+void drawGhosts(sf::RenderWindow& window)
+{
+    sf::CircleShape ghost(12.f);
+    for (int i = 0; i < NUM_GHOSTS; i++)
+    {
+        ghost.setFillColor(GHOST_COLORS[i]);
+        ghost.setPosition({ ghostCol[i] * TILE + 3.f, HUD_HEIGHT + ghostRow[i] * TILE + 3.f });
+        window.draw(ghost);
+    }
+}
+
 void drawHUD(sf::RenderWindow& window)
 {
     if (!fontLoaded)
@@ -223,6 +319,7 @@ void drawGame(sf::RenderWindow& window)
     {
         drawMaze(window);
         drawPlayer(window);
+        drawGhosts(window);
         drawHUD(window);
     }
     else if (fontLoaded)
@@ -238,6 +335,7 @@ void drawGame(sf::RenderWindow& window)
 
 int main()
 {
+    srand(time(0));
     sf::RenderWindow window(sf::VideoMode({ WIDTH, HEIGHT }), "Pac-Man");
     window.setFramerateLimit(60);
 
@@ -249,8 +347,7 @@ int main()
     if (!mazeLoaded)
         cout << "Could not load maze.txt" << endl;
 
-    playerRow = playerStartRow;
-    playerCol = playerStartCol;
+    resetPositions();
 
     while (window.isOpen())
     {
