@@ -176,6 +176,12 @@ int oppositeDir(int d)
     return (d % 2 == 1) ? d + 1 : d - 1;
 }
 
+// ghosts 0 and 2 chase, 1 and 3 wander
+bool isChaser(int i)
+{
+    return i == 0 || i == 2;
+}
+
 // moves ghost i one cell every GHOST_SPEED frames
 void moveGhost(int i)
 {
@@ -205,8 +211,29 @@ void moveGhost(int i)
     if (count == 0)
         return;
 
-    // draft: every ghost picks a random open direction
-    int chosen = options[rand() % count];
+    int chosen = options[0];
+
+    if (!isChaser(i))
+    {
+        chosen = options[rand() % count];
+    }
+    else
+    {
+        // closest cell to player, "<" keeps first one on a tie
+        int best = 9999;
+        for (int k = 0; k < count; k++)
+        {
+            int d = options[k];
+            int r = ghostRow[i] + dRow[d];
+            int c = ghostCol[i] + dCol[d];
+            int dist = abs(r - playerRow) + abs(c - playerCol);
+            if (dist < best)
+            {
+                best = dist;
+                chosen = d;
+            }
+        }
+    }
 
     ghostDir[i] = chosen;
     ghostRow[i] += dRow[chosen];
