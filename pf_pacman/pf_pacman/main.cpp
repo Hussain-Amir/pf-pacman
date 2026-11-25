@@ -16,8 +16,11 @@ const float HUD_HEIGHT = 50.f;
 const int NUM_GHOSTS = 4;
 const int PLAYER_SPEED = 8;
 const int GHOST_SPEED = 10;
+const int GHOST_FRIGHT_SPEED = 16;
+const int GHOST_POINTS = 200;
 const int PELLET_POINTS = 10;
 const int POWER_POINTS = 50;
+const int FRIGHT_FRAMES = 5 * 60;
 
 char maze[ROWS][COLS];
 int pelletCount = 0;
@@ -33,10 +36,16 @@ int playerDir = 0;
 int playerTimer = 0;
 
 int score = 0;
+int frightenedTimer = 0;
 
 int ghostRow[NUM_GHOSTS], ghostCol[NUM_GHOSTS];
 int ghostDir[NUM_GHOSTS];
 int ghostTimer[NUM_GHOSTS];
+bool ghostBlue[NUM_GHOSTS];
+
+// positions at the start of the frame, needed to catch swaps
+int playerPrevRow = 0, playerPrevCol = 0;
+int ghostPrevRow[NUM_GHOSTS], ghostPrevCol[NUM_GHOSTS];
 
 const int dRow[5] = { 0, -1, 1, 0, 0 };
 const int dCol[5] = { 0, 0, 0, -1, 1 };
@@ -105,7 +114,7 @@ bool isWall(int r, int c)
     return maze[r][c] == '#';
 }
 
-// puts player and ghosts on their start cells
+// puts player and ghosts on their start cells, ends blue mode
 void resetPositions()
 {
     playerRow = playerStartRow;
@@ -113,6 +122,7 @@ void resetPositions()
     playerDir = 0;
     keyDir = 0;
     playerTimer = 0;
+    frightenedTimer = 0;
 
     for (int i = 0; i < NUM_GHOSTS; i++)
     {
@@ -120,6 +130,7 @@ void resetPositions()
         ghostCol[i] = ghostStartCol[i];
         ghostDir[i] = 0;
         ghostTimer[i] = 0;
+        ghostBlue[i] = false;
     }
 }
 
@@ -149,6 +160,14 @@ void movePlayer()
     }
 }
 
+// all ghosts turn blue, eating another power pellet restarts the timer
+void makeGhostsBlue()
+{
+    for (int i = 0; i < NUM_GHOSTS; i++)
+        ghostBlue[i] = true;
+    frightenedTimer = FRIGHT_FRAMES;
+}
+
 // eats the pellet under the player
 void eatPellet()
 {
@@ -165,6 +184,7 @@ void eatPellet()
         score += POWER_POINTS;
         maze[playerRow][playerCol] = '-';
         pelletCount--;
+        makeGhostsBlue();
     }
 }
 
@@ -182,11 +202,12 @@ bool isChaser(int i)
     return i == 0 || i == 2;
 }
 
-// moves ghost i one cell every GHOST_SPEED frames
+// moves ghost i one cell, blue ghosts are slower
 void moveGhost(int i)
 {
+    int speed = ghostBlue[i] ? GHOST_FRIGHT_SPEED : GHOST_SPEED;
     ghostTimer[i]++;
-    if (ghostTimer[i] < GHOST_SPEED)
+    if (ghostTimer[i] < speed)
         return;
     ghostTimer[i] = 0;
 
@@ -213,7 +234,7 @@ void moveGhost(int i)
 
     int chosen = options[0];
 
-    if (!isChaser(i))
+    if (ghostBlue[i] || !isChaser(i))
     {
         chosen = options[rand() % count];
     }
@@ -246,6 +267,37 @@ void moveGhosts()
         moveGhost(i);
 }
 
+// two ways to meet: same cell, or swapped cells in this frame
+void checkCollisions()
+{
+    for (int i = 0; i < NUM_GHOSTS; i++)
+    {
+        bool sameCell = (playerRow == ghostRow[i] && playerCol == ghostCol[i]);
+        bool swapped = (playerRow == ghostPrevRow[i] && playerCol == ghostPrevCol[i] &&
+            ghostRow[i] == playerPrevRow && ghostCol[i] == playerPrevCol);
+
+        if (!sameCell && !swapped)
+            continue;
+
+        if (ghostBlue[i])
+        {
+            // eat the blue ghost, it goes back to start
+            score += GHOST_POINTS;
+            ghostRow[i] = ghostStartRow[i];
+            ghostCol[i] = ghostStartCol[i];
+            ghostDir[i] = 0;
+            ghostTimer[i] = 0;
+            ghostBlue[i] = false;
+        }
+        else
+        {
+            // draft: lives come in the next commit
+            resetPositions();
+            return;
+        }
+    }
+}
+
 void handleInput(sf::RenderWindow& window)
 {
     while (const std::optional event = window.pollEvent())
@@ -268,9 +320,26 @@ void handleInput(sf::RenderWindow& window)
 
 void updateGame()
 {
+    playerPrevRow = playerRow;
+    playerPrevCol = playerCol;
+    for (int i = 0; i < NUM_GHOSTS; i++)
+    {
+        ghostPrevRow[i] = ghostRow[i];
+        ghostPrevCol[i] = ghostCol[i];
+    }
+
     movePlayer();
     eatPellet();
     moveGhosts();
+    checkCollisions();
+
+    if (frightenedTimer > 0)
+    {
+        frightenedTimer--;
+        if (frightenedTimer == 0)
+            for (int i = 0; i < NUM_GHOSTS; i++)
+                ghostBlue[i] = false;
+    }
 }
 
 void drawMaze(sf::RenderWindow& window)
@@ -323,7 +392,7 @@ void drawGhosts(sf::RenderWindow& window)
     sf::CircleShape ghost(12.f);
     for (int i = 0; i < NUM_GHOSTS; i++)
     {
-        ghost.setFillColor(GHOST_COLORS[i]);
+        ghost.setFillColor(ghostBlue[i] ? sf::Color(90, 120, 255) : GHOST_COLORS[i]);
         ghost.setPosition({ ghostCol[i] * TILE + 3.f, HUD_HEIGHT + ghostRow[i] * TILE + 3.f });
         window.draw(ghost);
     }
