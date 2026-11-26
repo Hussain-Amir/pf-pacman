@@ -22,8 +22,12 @@ const int START_LIVES = 3;
 const int PELLET_POINTS = 10;
 const int POWER_POINTS = 50;
 const int FRIGHT_FRAMES = 5 * 60;
+const string SAVE_FILE = "savegame.txt";
 
 const int MENU = 0, PLAYING = 1, GAME_OVER = 2;
+
+const int MENU_NEW = 0, MENU_CONTINUE = 1, MENU_EXIT = 2;
+const int MENU_COUNT = 3;
 
 char maze[ROWS][COLS];
 int pelletCount = 0;
@@ -33,8 +37,10 @@ bool mazeLoaded = false;
 sf::Font font;
 bool fontLoaded = false;
 
-int gameState = PLAYING;     // menu comes in the next part
+int gameState = MENU;
 bool playerWon = false;
+int menuChoice = MENU_NEW;
+bool noSaveMessage = false;
 
 int keyDir = 0;          // 0 none, 1 up, 2 down, 3 left, 4 right
 int playerRow = 0, playerCol = 0;
@@ -334,27 +340,101 @@ void startNewGame()
     gameState = PLAYING;
 }
 
+// true if savegame.txt exists and is not empty
+bool hasSavedGame()
+{
+    ifstream file(SAVE_FILE);
+    if (!file.is_open())
+        return false;
+
+    int firstNumber;
+    if (file >> firstNumber)
+        return true;
+    else
+        return false;
+}
+
+// loading the save comes in the next part
+void continueGame()
+{
+}
+
+void goToMenu()
+{
+    gameState = MENU;
+    menuChoice = MENU_NEW;
+    noSaveMessage = false;
+}
+
+void handleMenuKey(sf::Keyboard::Key code, sf::RenderWindow& window)
+{
+    if (code == sf::Keyboard::Key::Up || code == sf::Keyboard::Key::W)
+    {
+        menuChoice = (menuChoice + MENU_COUNT - 1) % MENU_COUNT;
+        noSaveMessage = false;
+    }
+    else if (code == sf::Keyboard::Key::Down || code == sf::Keyboard::Key::S)
+    {
+        menuChoice = (menuChoice + 1) % MENU_COUNT;
+        noSaveMessage = false;
+    }
+    else if (code == sf::Keyboard::Key::Enter)
+    {
+        switch (menuChoice)
+        {
+        case MENU_NEW:
+            startNewGame();
+            break;
+        case MENU_CONTINUE:
+            if (hasSavedGame())
+                continueGame();
+            else
+                noSaveMessage = true;
+            break;
+        case MENU_EXIT:
+            window.close();
+            break;
+        }
+    }
+}
+
+void handlePlayingKey(sf::Keyboard::Key code)
+{
+    if (code == sf::Keyboard::Key::Up || code == sf::Keyboard::Key::W)
+        keyDir = 1;
+    else if (code == sf::Keyboard::Key::Down || code == sf::Keyboard::Key::S)
+        keyDir = 2;
+    else if (code == sf::Keyboard::Key::Left || code == sf::Keyboard::Key::A)
+        keyDir = 3;
+    else if (code == sf::Keyboard::Key::Right || code == sf::Keyboard::Key::D)
+        keyDir = 4;
+    else if (code == sf::Keyboard::Key::Escape)
+        goToMenu();                // saving comes in the next part
+}
+
+// each state handles only its own keys
 void handleInput(sf::RenderWindow& window)
 {
     while (const std::optional event = window.pollEvent())
     {
         if (event->is<sf::Event::Closed>())
+        {
             window.close();
+        }
         else if (const auto* key = event->getIf<sf::Event::KeyPressed>())
         {
-            if (key->code == sf::Keyboard::Key::Up || key->code == sf::Keyboard::Key::W)
-                keyDir = 1;
-            else if (key->code == sf::Keyboard::Key::Down || key->code == sf::Keyboard::Key::S)
-                keyDir = 2;
-            else if (key->code == sf::Keyboard::Key::Left || key->code == sf::Keyboard::Key::A)
-                keyDir = 3;
-            else if (key->code == sf::Keyboard::Key::Right || key->code == sf::Keyboard::Key::D)
-                keyDir = 4;
-            else if (key->code == sf::Keyboard::Key::Enter)
+            switch (gameState)
             {
-                // menu comes in the next part, for now start again
-                if (gameState == GAME_OVER)
-                    startNewGame();
+            case MENU:
+                handleMenuKey(key->code, window);
+                break;
+            case PLAYING:
+                handlePlayingKey(key->code);
+                break;
+            case GAME_OVER:
+                if (key->code == sf::Keyboard::Key::Enter)
+                    goToMenu();
+                break;
             }
         }
     }
@@ -400,8 +480,12 @@ void updateGame()
 {
     switch (gameState)
     {
+    case MENU:
+        break;
     case PLAYING:
         updatePlaying();
+        break;
+    case GAME_OVER:
         break;
     }
 }
@@ -499,6 +583,46 @@ void drawPlaying(sf::RenderWindow& window)
     }
 }
 
+void drawMenu(sf::RenderWindow& window)
+{
+    if (!fontLoaded)
+        return;
+
+    sf::Text title(font, "PAC-MAN", 64);
+    title.setFillColor(sf::Color::Yellow);
+    sf::FloatRect b = title.getLocalBounds();
+    title.setPosition({ (WIDTH - b.size.x) / 2.f, 120.f });
+    window.draw(title);
+
+    const string labels[MENU_COUNT] = { "New Game", "Continue", "Exit" };
+    for (int i = 0; i < MENU_COUNT; i++)
+    {
+        bool selected = (i == menuChoice);
+        string line = selected ? "> " + labels[i] : labels[i];
+
+        sf::Text item(font, line, 32);
+        item.setFillColor(selected ? sf::Color::Yellow : sf::Color::White);
+        b = item.getLocalBounds();
+        item.setPosition({ (WIDTH - b.size.x) / 2.f, 270.f + i * 60.f });
+        window.draw(item);
+    }
+
+    if (noSaveMessage)
+    {
+        sf::Text msg(font, "No saved game", 24);
+        msg.setFillColor(sf::Color::Red);
+        b = msg.getLocalBounds();
+        msg.setPosition({ (WIDTH - b.size.x) / 2.f, 480.f });
+        window.draw(msg);
+    }
+
+    sf::Text hint(font, "Up/Down to choose, Enter to select", 18);
+    hint.setFillColor(sf::Color(150, 150, 150));
+    b = hint.getLocalBounds();
+    hint.setPosition({ (WIDTH - b.size.x) / 2.f, 600.f });
+    window.draw(hint);
+}
+
 // message, final score and "Press Enter"
 void drawGameOverScreen(sf::RenderWindow& window)
 {
@@ -529,6 +653,9 @@ void drawGame(sf::RenderWindow& window)
 
     switch (gameState)
     {
+    case MENU:
+        drawMenu(window);
+        break;
     case PLAYING:
         drawPlaying(window);
         break;
