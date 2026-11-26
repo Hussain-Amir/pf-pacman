@@ -18,9 +18,12 @@ const int PLAYER_SPEED = 8;
 const int GHOST_SPEED = 10;
 const int GHOST_FRIGHT_SPEED = 16;
 const int GHOST_POINTS = 200;
+const int START_LIVES = 3;
 const int PELLET_POINTS = 10;
 const int POWER_POINTS = 50;
 const int FRIGHT_FRAMES = 5 * 60;
+
+const int MENU = 0, PLAYING = 1, GAME_OVER = 2;
 
 char maze[ROWS][COLS];
 int pelletCount = 0;
@@ -30,12 +33,16 @@ bool mazeLoaded = false;
 sf::Font font;
 bool fontLoaded = false;
 
+int gameState = PLAYING;     // menu comes in the next part
+bool playerWon = false;
+
 int keyDir = 0;          // 0 none, 1 up, 2 down, 3 left, 4 right
 int playerRow = 0, playerCol = 0;
 int playerDir = 0;
 int playerTimer = 0;
 
 int score = 0;
+int lives = START_LIVES;
 int frightenedTimer = 0;
 
 int ghostRow[NUM_GHOSTS], ghostCol[NUM_GHOSTS];
@@ -267,6 +274,25 @@ void moveGhosts()
         moveGhost(i);
 }
 
+// shows the win or game over screen
+void endGame(bool won)
+{
+    playerWon = won;
+    gameState = GAME_OVER;
+}
+
+// one life less, everyone back to start, pellets stay
+void loseLife()
+{
+    lives--;
+    if (lives <= 0)
+    {
+        endGame(false);
+        return;
+    }
+    resetPositions();
+}
+
 // two ways to meet: same cell, or swapped cells in this frame
 void checkCollisions()
 {
@@ -291,11 +317,21 @@ void checkCollisions()
         }
         else
         {
-            // draft: lives come in the next commit
-            resetPositions();
+            loseLife();
             return;
         }
     }
+}
+
+// fresh game: score 0, full lives, maze loaded again
+void startNewGame()
+{
+    score = 0;
+    lives = START_LIVES;
+    playerWon = false;
+    mazeLoaded = loadMaze("maze.txt");
+    resetPositions();
+    gameState = PLAYING;
 }
 
 void handleInput(sf::RenderWindow& window)
@@ -314,12 +350,21 @@ void handleInput(sf::RenderWindow& window)
                 keyDir = 3;
             else if (key->code == sf::Keyboard::Key::Right || key->code == sf::Keyboard::Key::D)
                 keyDir = 4;
+            else if (key->code == sf::Keyboard::Key::Enter)
+            {
+                // menu comes in the next part, for now start again
+                if (gameState == GAME_OVER)
+                    startNewGame();
+            }
         }
     }
 }
 
-void updateGame()
+void updatePlaying()
 {
+    if (!mazeLoaded)
+        return;
+
     playerPrevRow = playerRow;
     playerPrevCol = playerCol;
     for (int i = 0; i < NUM_GHOSTS; i++)
@@ -330,8 +375,17 @@ void updateGame()
 
     movePlayer();
     eatPellet();
+
+    if (pelletCount == 0)
+    {
+        endGame(true);
+        return;
+    }
+
     moveGhosts();
     checkCollisions();
+    if (gameState != PLAYING)
+        return;
 
     if (frightenedTimer > 0)
     {
@@ -339,6 +393,16 @@ void updateGame()
         if (frightenedTimer == 0)
             for (int i = 0; i < NUM_GHOSTS; i++)
                 ghostBlue[i] = false;
+    }
+}
+
+void updateGame()
+{
+    switch (gameState)
+    {
+    case PLAYING:
+        updatePlaying();
+        break;
     }
 }
 
@@ -398,19 +462,27 @@ void drawGhosts(sf::RenderWindow& window)
     }
 }
 
+// score on the left, lives as yellow circles on the right
 void drawHUD(sf::RenderWindow& window)
 {
-    if (!fontLoaded)
-        return;
-    sf::Text scoreText(font, "Score: " + to_string(score), 24);
-    scoreText.setPosition({ 15.f, 10.f });
-    window.draw(scoreText);
+    if (fontLoaded)
+    {
+        sf::Text scoreText(font, "Score: " + to_string(score), 24);
+        scoreText.setPosition({ 15.f, 10.f });
+        window.draw(scoreText);
+    }
+
+    sf::CircleShape lifeIcon(10.f);
+    lifeIcon.setFillColor(sf::Color::Yellow);
+    for (int i = 0; i < lives; i++)
+    {
+        lifeIcon.setPosition({ WIDTH - 35.f - i * 28.f, 15.f });
+        window.draw(lifeIcon);
+    }
 }
 
-void drawGame(sf::RenderWindow& window)
+void drawPlaying(sf::RenderWindow& window)
 {
-    window.clear();
-
     if (mazeLoaded)
     {
         drawMaze(window);
@@ -424,6 +496,45 @@ void drawGame(sf::RenderWindow& window)
         error.setFillColor(sf::Color::Red);
         error.setPosition({ 20.f, 300.f });
         window.draw(error);
+    }
+}
+
+// message, final score and "Press Enter"
+void drawGameOverScreen(sf::RenderWindow& window)
+{
+    if (!fontLoaded)
+        return;
+
+    sf::Text title(font, playerWon ? "YOU WIN" : "GAME OVER", 56);
+    title.setFillColor(playerWon ? sf::Color::Green : sf::Color::Red);
+    sf::FloatRect b = title.getLocalBounds();
+    title.setPosition({ (WIDTH - b.size.x) / 2.f, 220.f });
+    window.draw(title);
+
+    sf::Text scoreText(font, "Final Score: " + to_string(score), 30);
+    b = scoreText.getLocalBounds();
+    scoreText.setPosition({ (WIDTH - b.size.x) / 2.f, 320.f });
+    window.draw(scoreText);
+
+    sf::Text hint(font, "Press Enter", 24);
+    hint.setFillColor(sf::Color(180, 180, 180));
+    b = hint.getLocalBounds();
+    hint.setPosition({ (WIDTH - b.size.x) / 2.f, 390.f });
+    window.draw(hint);
+}
+
+void drawGame(sf::RenderWindow& window)
+{
+    window.clear();
+
+    switch (gameState)
+    {
+    case PLAYING:
+        drawPlaying(window);
+        break;
+    case GAME_OVER:
+        drawGameOverScreen(window);
+        break;
     }
 
     window.display();
