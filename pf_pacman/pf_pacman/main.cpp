@@ -201,6 +201,96 @@ void eatPellet()
     }
 }
 
+// opening with ofstream and closing at once empties the file
+void clearSave()
+{
+    ofstream file(SAVE_FILE);
+    file.close();
+}
+
+// line 1: score lives, line 2: player row col,
+// line 3: row col of the 4 ghosts, then the 21 maze rows
+// direction and blue mode are not saved
+void saveGame()
+{
+    if (!mazeLoaded)
+        return;
+
+    ofstream file(SAVE_FILE);
+    if (!file.is_open())
+        return;
+
+    file << score << " " << lives << "\n";
+    file << playerRow << " " << playerCol << "\n";
+    for (int i = 0; i < NUM_GHOSTS; i++)
+    {
+        file << ghostRow[i] << " " << ghostCol[i];
+        if (i < NUM_GHOSTS - 1)
+            file << " ";
+    }
+    file << "\n";
+
+    for (int r = 0; r < ROWS; r++)
+    {
+        for (int c = 0; c < COLS; c++)
+            file << maze[r][c];
+        file << "\n";
+    }
+}
+
+// false if there is no valid save
+bool loadGame()
+{
+    ifstream file(SAVE_FILE);
+    if (!file.is_open())
+        return false;
+
+    // maze.txt gives the start cells, needed after losing a life
+    if (!loadMaze("maze.txt"))
+        return false;
+
+    int savedScore, savedLives, pRow, pCol;
+    int gRow[NUM_GHOSTS], gCol[NUM_GHOSTS];
+
+    file >> savedScore >> savedLives >> pRow >> pCol;
+    for (int i = 0; i < NUM_GHOSTS; i++)
+        file >> gRow[i] >> gCol[i];
+
+    if (!file || savedLives <= 0)
+        return false;
+
+    // saved maze replaces the fresh one, eaten pellets show as -
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+            file >> maze[r][c];
+
+    if (!file)
+        return false;
+
+    // count the pellets again or the game cannot know when you win
+    pelletCount = 0;
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+            if (maze[r][c] == '.' || maze[r][c] == 'o')
+                pelletCount++;
+
+    // everyone stands still and ghosts are normal
+    resetPositions();
+    score = savedScore;
+    lives = savedLives;
+    playerRow = pRow;
+    playerCol = pCol;
+    for (int i = 0; i < NUM_GHOSTS; i++)
+    {
+        ghostRow[i] = gRow[i];
+        ghostCol[i] = gCol[i];
+    }
+
+    playerWon = false;
+    mazeLoaded = true;
+    return true;
+}
+
 // up <-> down, left <-> right
 int oppositeDir(int d)
 {
@@ -280,11 +370,12 @@ void moveGhosts()
         moveGhost(i);
 }
 
-// shows the win or game over screen
+// shows the win or game over screen, a finished game cannot be continued
 void endGame(bool won)
 {
     playerWon = won;
     gameState = GAME_OVER;
+    clearSave();
 }
 
 // one life less, everyone back to start, pellets stay
@@ -354,9 +445,13 @@ bool hasSavedGame()
         return false;
 }
 
-// loading the save comes in the next part
+// load the save and carry on
 void continueGame()
 {
+    if (loadGame())
+        gameState = PLAYING;
+    else
+        noSaveMessage = true;
 }
 
 void goToMenu()
@@ -409,7 +504,10 @@ void handlePlayingKey(sf::Keyboard::Key code)
     else if (code == sf::Keyboard::Key::Right || code == sf::Keyboard::Key::D)
         keyDir = 4;
     else if (code == sf::Keyboard::Key::Escape)
-        goToMenu();                // saving comes in the next part
+    {
+        saveGame();
+        goToMenu();
+    }
 }
 
 // each state handles only its own keys
