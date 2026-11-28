@@ -22,6 +22,7 @@ const int START_LIVES = 3;
 const int PELLET_POINTS = 10;
 const int POWER_POINTS = 50;
 const int FRIGHT_FRAMES = 5 * 60;
+const int UNREACHABLE = 999;                // bonus
 const string SAVE_FILE = "savegame.txt";
 
 const int MENU = 0, PLAYING = 1, GAME_OVER = 2;
@@ -59,6 +60,10 @@ bool ghostBlue[NUM_GHOSTS];
 // positions at the start of the frame, needed to catch swaps
 int playerPrevRow = 0, playerPrevCol = 0;
 int ghostPrevRow[NUM_GHOSTS], ghostPrevCol[NUM_GHOSTS];
+
+int dist[ROWS][COLS];                       // bonus: steps from each cell to player
+int mapRow = -1, mapCol = -1;               // bonus: player cell the map was made for
+bool showDistances = false;                 // bonus: M key
 
 const int dRow[5] = { 0, -1, 1, 0, 0 };
 const int dCol[5] = { 0, 0, 0, -1, 1 };
@@ -145,6 +150,8 @@ void resetPositions()
         ghostTimer[i] = 0;
         ghostBlue[i] = false;
     }
+
+    mapRow = -1;                            // bonus: force the map to be rebuilt
 }
 
 // moves one cell every PLAYER_SPEED frames
@@ -305,6 +312,47 @@ bool isChaser(int i)
     return i == 0 || i == 2;
 }
 
+// bonus: dist[r][c] = steps to walk from (r,c) to the player
+// walls are skipped so they stay at UNREACHABLE
+void buildDistanceMap()
+{
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+            dist[r][c] = UNREACHABLE;
+    dist[playerRow][playerCol] = 0;
+
+    // repeat passes until one pass changes nothing
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        for (int r = 0; r < ROWS; r++)
+        {
+            for (int c = 0; c < COLS; c++)
+            {
+                if (isWall(r, c))
+                    continue;
+
+                for (int d = 1; d <= 4; d++)
+                {
+                    int nr = r + dRow[d];
+                    int nc = c + dCol[d];
+                    if (isWall(nr, nc))
+                        continue;
+                    if (dist[nr][nc] + 1 < dist[r][c])
+                    {
+                        dist[r][c] = dist[nr][nc] + 1;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    mapRow = playerRow;
+    mapCol = playerCol;
+}
+
 // moves ghost i one cell, blue ghosts are slower
 void moveGhost(int i)
 {
@@ -343,17 +391,24 @@ void moveGhost(int i)
     }
     else
     {
-        // closest cell to player, "<" keeps first one on a tie
+        // smallest value wins, "<" keeps first one on a tie
+        // ghost 0 uses the distance map, ghost 2 uses straight distance
         int best = 9999;
         for (int k = 0; k < count; k++)
         {
             int d = options[k];
             int r = ghostRow[i] + dRow[d];
             int c = ghostCol[i] + dCol[d];
-            int dist = abs(r - playerRow) + abs(c - playerCol);
-            if (dist < best)
+
+            int value;
+            if (i == 0)
+                value = dist[r][c];                                // bonus
+            else
+                value = abs(r - playerRow) + abs(c - playerCol);
+
+            if (value < best)
             {
-                best = dist;
+                best = value;
                 chosen = d;
             }
         }
@@ -508,6 +563,8 @@ void handlePlayingKey(sf::Keyboard::Key code)
         saveGame();
         goToMenu();
     }
+    else if (code == sf::Keyboard::Key::M)
+        showDistances = !showDistances;                            // bonus
 }
 
 // each state handles only its own keys
@@ -552,6 +609,11 @@ void updatePlaying()
     }
 
     movePlayer();
+
+    // bonus: rebuild the map when the player is on a new cell
+    if (playerRow != mapRow || playerCol != mapCol)
+        buildDistanceMap();
+
     eatPellet();
 
     if (pelletCount == 0)
@@ -644,6 +706,29 @@ void drawGhosts(sf::RenderWindow& window)
     }
 }
 
+// bonus: draws the distance number on every open cell
+void drawDistances(sf::RenderWindow& window)
+{
+    if (!fontLoaded)
+        return;
+
+    sf::Text number(font, "", 12);
+    number.setFillColor(sf::Color(0, 255, 0));
+
+    for (int r = 0; r < ROWS; r++)
+    {
+        for (int c = 0; c < COLS; c++)
+        {
+            if (isWall(r, c) || dist[r][c] == UNREACHABLE)
+                continue;
+
+            number.setString(to_string(dist[r][c]));
+            number.setPosition({ c * TILE + 4.f, HUD_HEIGHT + r * TILE + 6.f });
+            window.draw(number);
+        }
+    }
+}
+
 // score on the left, lives as yellow circles on the right
 void drawHUD(sf::RenderWindow& window)
 {
@@ -670,6 +755,8 @@ void drawPlaying(sf::RenderWindow& window)
         drawMaze(window);
         drawPlayer(window);
         drawGhosts(window);
+        if (showDistances)                                         // bonus
+            drawDistances(window);
         drawHUD(window);
     }
     else if (fontLoaded)
